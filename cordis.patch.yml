@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# @kirara/dsh-plugin-kirara-theme — bundle patch
+# ---------------------------------------------------------------------------
+# 这是一个 bundle patch（顶层为 YAML 数组），由 DSH 在启动时按 bundles 顺序叠加。
+#
+# ⚠️ 覆盖语义：profile 自己的 cordis.patch.yml 里按 id 覆盖时，config 是
+# **整行替换**（不是逐字段合并）。所以本文件刻意只写「必须显式给」的字段，
+# 其余全部留给插件的 Config schema 默认值 —— 这样别人覆盖时也不用抄一遍。
+# DSH 对缺省 config 会用插件自己的 schema 填默认值。
+#
+# 注意：packages 的 bundles 只在启动时读取一次 —— 修改本文件后需要完全重启 DSH。
+# ---------------------------------------------------------------------------
+- insert:
+    - id: kirara-theme
+      name: '@kirara/dsh-plugin-kirara-theme'
+      config:
+        # 本文件是「随包出厂」的默认层，只声明挂载与开关；
+        # endpoint / routePath / syncIntervalMinutes / requestTimeoutMs / cacheDir
+        # 全部由插件内置默认值提供，这里重复一遍只会让「覆盖 = 整行替换」时更容易漏字段。
+        enabled: true
+        #
+        # apiBaseUrl 同样不在这里写死 —— 它默认指向 Kirara Server 的公开图源
+        # （见 lib/index.js 的 DEFAULT_API_BASE_URL），因此开箱即用。
+        #
+        # 要让插件去拉**你自己的**服务器，在 profile 的 cordis.patch.yml 里覆盖同名 id：
+        #
+        #   - id: kirara-theme
+        #     config:
+        #       enabled: true
+        #       apiBaseUrl: 'http://192.168.1.10:1010'
+        #
+        # ⚠️ 覆盖是**整行替换**：上面这行改完后，本文件里的 enabled 不再生效，
+        # 所以要连 enabled 一起写。其余字段留空即回落到插件内置默认值。

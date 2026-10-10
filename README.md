@@ -47,8 +47,10 @@
 
 唯一的外部依赖是**能返回背景图的服务器**。用插件默认的公开图源的话，连这个都不用准备。
 
-插件依赖 DSH Web GUI 的内部 class 名（`.BynINW_sidebarCol`、`.Dc7zOa_root` 之类）。
-DSH 改版后这些名字可能变，届时外观层会静默失效（不报错），需要跟着更新插件。
+插件依赖 DSH Web GUI 的内部 class 名 —— 但只依赖 **CSS Modules 的本地名后缀**
+（`[class*="_sidebarCol"]`、`[class*="_root"][data-phase]` 之类），不依赖构建期哈希前缀。
+所以官方 DSH 与 EduWork 这类内置了另一份 DSH 构建的宿主都能命中。宿主若改掉结构
+（而不只是重新编译一次），外观层会静默失效（不报错），届时需要跟着更新插件。
 
 ## 安装
 
@@ -208,8 +210,9 @@ curl.exe -sS -X POST http://127.0.0.1:19387/kirara-theme/invalidate
 `X-Resource-Version`，或者 `POST /kirara-theme/refresh` 强制同步一次看返回什么。
 
 **主界面是纯色面板，只有侧栏能看见背景？**
-说明宿主在内层容器上铺的不透明实色底没有被清掉。本插件会清掉 `.Dc7zOa_root` 与
-`._2H3hWW_root` 的底色，如果 DSH 升级后换了类名，这一处会失效。见[已知限制](docs/limitations.md)。
+说明宿主在内层容器上铺的不透明实色底没有被清掉。本插件会清掉会话主界面根
+（`[class*="_root"][data-phase]`）与侧栏 / 右侧栏内部各面板根的底色；宿主若改掉了这层结构
+（而不只是重新编译一次），这一处会失效。见[已知限制](docs/limitations.md)。
 
 **菜单和弹出层也跟着变半透明了？**
 那是改错了地方 —— 插件覆盖的是三个列元素自身的声明，没有动 `--dsw-specific-sidebar-fill` 这个 token。
@@ -252,7 +255,7 @@ curl.exe -sS -X POST http://127.0.0.1:19387/kirara-theme/invalidate
 - [DSH 客户端插件契约](docs/plugin-contract.md) —— 客户端半的模块格式、`dsh.client` 字段、颜色 token
 - [本地开发](docs/local-development.md) —— 挂载到 profile、部署脚本、11 项不变量
 - [故障排查](docs/troubleshooting.md) —— DevTools 核对脚本，以及几个已经踩过的坑
-- [已知限制与取舍](docs/limitations.md) —— 哈希类名、标题栏近似色这些边界
+- [已知限制与取舍](docs/limitations.md) —— 宿主结构耦合、标题栏近似色这些边界
 
 ## 许可
 

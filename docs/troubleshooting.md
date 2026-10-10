@@ -36,29 +36,30 @@ document.querySelector('style[data-plugin-css="@kirara/dsh-plugin-kirara-theme/c
 
 ```js
 // ① 三列的磨砂值（切换 DSH 明暗主题后重跑）
-getComputedStyle(document.querySelector('.BynINW_sidebarCol')).backgroundColor
+getComputedStyle(document.querySelector('[class*="_sidebarCol"]')).backgroundColor
 // 深色 → rgba(20, 22, 28, 0.58) / 浅色 → rgba(249, 250, 252, 0.58)
 
-getComputedStyle(document.querySelector('.BynINW_centerCol')).backgroundColor
+getComputedStyle(document.querySelector('[class*="_centerCol"]')).backgroundColor
 // 深色 → rgba(16, 18, 24, 0.86) / 浅色 → rgba(252, 252, 253, 0.86)
 
-getComputedStyle(document.querySelector('.BynINW_rightbarCol')).backgroundColor
+getComputedStyle(document.querySelector('[class*="_rightbarCol"]')).backgroundColor
 // 同内容列
 
 // ② 外框透明（让整屏背景露出来）
-getComputedStyle(document.querySelector('.BynINW_frame')).backgroundColor   // → rgba(0, 0, 0, 0)
+getComputedStyle(document.querySelector('[class*="_frame"]:has([class*="_sidebarCol"])')).backgroundColor   // → rgba(0, 0, 0, 0)
 
 // ③ 内层实色底是否已清掉（没清掉的话上面几条半透明等于白设）
-getComputedStyle(document.querySelector('._2H3hWW_root')).backgroundColor   // → rgba(0, 0, 0, 0)
-getComputedStyle(document.querySelector('.Dc7zOa_root')).backgroundColor    // → rgba(0, 0, 0, 0)
+getComputedStyle(document.querySelector('[class*="_sidebarCol"] [class*="_root"]')).backgroundColor   // → rgba(0, 0, 0, 0)
+getComputedStyle(document.querySelector('[class*="_root"][data-phase]')).backgroundColor   // → rgba(0, 0, 0, 0)
 
 // ④ 侧栏右上角圆角（仅桌面壳生效）
-getComputedStyle(document.querySelector('.BynINW_sidebarCol')).borderTopRightRadius   // → "16px"
+getComputedStyle(document.querySelector('[class*="_sidebarCol"]')).borderTopRightRadius   // → "16px"
 
 // ⑤ Windows 顶栏：整条透明露图，且拖拽区必须还在
-getComputedStyle(document.querySelector('.BynINW_frame')).backgroundColor              // → rgba(0, 0, 0, 0)
-getComputedStyle(document.querySelector('.BynINW_frame'), '::before').backgroundColor  // → rgba(0, 0, 0, 0)
-getComputedStyle(document.querySelector('.BynINW_frame'), '::before').webkitAppRegion  // → "drag"
+const frame = document.querySelector('[class*="_frame"]:has([class*="_sidebarCol"])')
+getComputedStyle(frame).backgroundColor              // → rgba(0, 0, 0, 0)
+getComputedStyle(frame, '::before').backgroundColor  // → rgba(0, 0, 0, 0)
+getComputedStyle(frame, '::before').webkitAppRegion  // → "drag"
 ```
 
 ## Windows 标题栏底色
@@ -204,7 +205,7 @@ AppFrame 在文档流里是 `z-index:auto`，因此 0 / 1 不是「在其下」�
 | --- | --- | --- |
 | 装完毫无变化 | 没有完全重启 DSH，或 bundles 里没注册 | 重启 DSH；检查 `dsh.profile.bundles` |
 | 只有深色渐变 | 还没拿到远端图 | 检查服务器 302 与版本头；`POST /kirara-theme/refresh` |
-| 主界面是纯色面板 | 内层实色底没清掉（哈希类名变了） | 见[已知限制](limitations.md)，用 DevTools 核对 `._2H3hWW_root` / `.Dc7zOa_root` |
+| 主界面是纯色面板 | 内层实色底没清掉（宿主换了容器 / 改了结构） | 见[已知限制](limitations.md)，用 DevTools 核对 `[class*="_root"][data-phase]` 与内容列内的面板根 |
 | 菜单和浮层都变半透明 | 误改了 `--dsw-specific-sidebar-fill` | 回退到只给列铺底色、内层清成 `transparent` |
 | 右上角标题栏一直是实色带 | 探针规则没匹配到，或采样失败 | 核对 `--kirara-caption-fill` 与探针元素 |
 | 首屏闪一下 | 两份 CSS 不同源 | `node scripts\check-css-parity.mjs` |

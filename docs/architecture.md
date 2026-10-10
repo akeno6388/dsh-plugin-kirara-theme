@@ -80,8 +80,8 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 | `DefaultBackgroundAsset` 降级默认图 | `DEFAULT_BACKDROP_CSS` 渐变（不是图片文件） |
 | 换图 300ms 交叉淡入 | `swap()`：离屏 `new Image()` 预解码成功后才一次性换 `--kirara-theme-photo` |
 | `HomeOverlay.Opacity = 0.55` | `html::after` 遮罩层恒为 `rgba(0,0,0,.55)`，浅色下也不变 |
-| 左侧栏半透明 | `.BynINW_sidebarCol` 铺 `rgba(20,22,28,.58)`（深）/ `rgba(249,250,252,.58)`（浅） |
-| 主界面 / 右侧栏半透明 | `.BynINW_centerCol` + `.BynINW_rightbarCol` 铺 `rgba(16,18,24,.86)`（深）/ `rgba(252,252,253,.86)`（浅） |
+| 左侧栏半透明 | `[class*="_sidebarCol"]` 铺 `rgba(20,22,28,.58)`（深）/ `rgba(249,250,252,.58)`（浅） |
+| 主界面 / 右侧栏半透明 | `[class*="_centerCol"]` + `[class*="_rightbarCol"]` 铺 `rgba(16,18,24,.86)`（深）/ `rgba(252,252,253,.86)`（浅） |
 | 圆角窗口外壳 | 内容卡左上角本就是宿主原生的 `16px`；插件给侧栏列补上对称的右上角圆角 |
 
 **关于「淡入」**：这条链路没有淡入。自定义属性的取值是**离散**的，不能 transition ——
@@ -94,7 +94,7 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 
 1. **不覆盖 `--dsw-specific-sidebar-fill`**。该 token 同时被菜单、弹出层、`--dsw-alias-button-elevated-fill`
    系列复用 —— 改它会让**所有浮层一起变半透明**。正确做法是只给三个列元素
-   （`.BynINW_sidebarCol` / `.BynINW_centerCol` / `.BynINW_rightbarCol`）铺半透明底，
+   （`[class*="_sidebarCol"]` / `[class*="_centerCol"]` / `[class*="_rightbarCol"]`）铺半透明底，
    并把内层容器原来的不透明底清成 `transparent`。
 2. **不用 `backdrop-filter`**。Kirara 首页没有任何亚克力或模糊（整屏照片已经盖住窗口级 Mica）。
 3. **不用 `color-mix` / `@supports`**。统一写死 `rgba()`，宿主注入的首帧 CSS 与客户端才能逐字节对齐，
@@ -115,26 +115,39 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
    `<html>` 上永远没有 `data-ds-dark-theme`，深色规则**永不命中**；
    **也不能**写成 `body[data-ds-dark-theme] :root[…]`，那是错误的后代选择器。
    宿主半（`bootCss()`）用裸 `:root` 前缀，深色分支即 `:root body[data-ds-dark-theme]`。
-7. **列与内层类名全是构建期哈希**（`.BynINW_sidebarCol` / `.BynINW_centerCol` / `.BynINW_rightbarCol` /
-   `._2H3hWW_root` / `.Dc7zOa_root` / `.Dc7zOa_composerSeat`）。这些元素上**没有任何稳定属性**可依赖，
-   只能写死哈希。DSH 升级导致哈希变化时，后果是「该处不再半透明 / 圆角消失」，布局不会被破坏，
-   属于可接受的降级。核对方式：从 `resources/app.asar` 里解出
-   `@deepseek-ai/dsh-client-ui-layout|sidebar|conversation/lib/client.js` 搜类名。
+7. ★ **选择器只写 CSS Modules 的「本地名后缀」，绝不写哈希前缀**。
+   `.module.css` 编译出来的类名是 `<哈希前缀>_<本地名>`：本地名来自源码、跨宿主版本稳定，
+   哈希前缀**每次构建都可能变** —— 官方 `0.2.0-rc.2` 出的是 `.BynINW_sidebarCol`，
+   EduWork 内置的新版 DSH 把同一份源码编译成 `.pI_x6G_sidebarCol`。写死前缀 ⇒ 换一个宿主构建
+   就整层静默失效（症状：照片被宿主的不透明列与面板盖死、三列都不透明）。
+   后缀唯一性已在客户端全量核对：`_sidebarCol` / `_centerCol` / `_rightbarCol` / `_composerSeat` /
+   `_embeddedBody` / `_fade` 各只对应一个前缀；`_frame`（11 个）与 `_root`（44 个）不唯一 ⇒
+   用「结构 / 属性」锚点区分：
+   - **外框** = 唯一「包含侧栏列」的 `_frame`：`[class*="_frame"]:has([class*="_sidebarCol"])`
+     （`:has()` 宿主自己也在用）；
+   - **会话根** = 唯一带 `data-phase` 的 `_root`：`[class*="_root"][data-phase]`
+     （宿主 CSS 用的就是同一依据）；
+   - **侧栏 / 右侧栏内的面板根** = 该列内部**全部** `_root`。宿主把侧栏拆成了多个可切换面板、
+     每个面板自带一个 `_root`，逐个点名只是把哈希依赖换个地方放。
+   菜单与浮层走 `createPortal(…, document.body)` 渲染，落在列之外，不受这几条影响。
+   降级后果是「该处不再半透明 / 圆角消失」，布局不会被破坏。
+   核对方式：解出 `@deepseek-ai/dsh-client-ui-layout`（或 `-sidebar` / `-conversation`）的
+   `lib/client.js` 搜本地名后缀。
 8. **磨砂只能由「列」承担，内层实色底必须清成 `transparent`**。宿主在两处内层根上各自铺了不透明底：
-   侧栏 `._2H3hWW_root{background:var(--dsw-specific-sidebar-fill)}`、
-   会话主界面 `.Dc7zOa_root{background:var(--dsw-alias-bg-base)}`，
-   还有一条把输入区底部收口到实色的 `.Dc7zOa_composerSeat` 渐变。只改列的颜色而不管内层，
-   后果有两个方向：内层不动 ⇒ 实色把照片整块盖住（侧栏半透明看得见背景，主界面却是纯色面板）；
-   内层也铺同色半透明 ⇒ 两层叠加反而推回近实心（`0.72` 叠 `0.72` ≈ `0.92`）。
+   侧栏内部的每个面板根（`--dsw-specific-sidebar-fill` / `--dsw-alias-bg-base`）、
+   会话主界面根（`--dsw-alias-bg-base`），还有一条把输入区底部收口到实色的
+   `[class*="_composerSeat"]` 渐变。只改列的颜色而不管内层，后果有两个方向：
+   内层不动 ⇒ 实色把照片整块盖住（侧栏半透明看得见背景，主界面却是纯色面板）；
+   内层也铺同色半透明 ⇒ 两层叠加反而推回近实心（`0.58` 叠 `0.58` ≈ `0.82`）。
    准确配方是：**透明度只在列上设一次，内层一律 `transparent`**。
 9. **Windows 顶栏是「零透明度」的唯一例外**：顶栏那条不设任何透明度，直接 `transparent` 露出背景图层。
-   宿主在顶栏上有**两层**不透明来源，必须一起清：`.BynINW_frame`（给 `padding-top` 预留的顶栏高度
-   填的 `--dsw-specific-sidebar-fill`）与 `.BynINW_frame:before`
+   宿主在顶栏上有**两层**不透明来源，必须一起清：外框 `_frame`（给 `padding-top` 预留的顶栏高度
+   填的 `--dsw-specific-sidebar-fill`）与外框 `_frame:before`
    （`height:var(--dsh-windows-titlebar-height)` 的全宽拖拽条，自己又铺了一层同色底）。
    只清 `:before` 会剩外框一层，只清外框会剩 `:before` 一层，**症状都是顶栏比下方内容区更亮**。
    只清 `background`，**保留 `:before` 的 `-webkit-app-region:drag`**（窗口拖拽几何，宿主给的）。
-   这条规则的特异度是 (0,3,0)（比通用列规则多一个 `[data-windows-titlebar]`），高于宿主外框那条 (0,2,0)，
-   所以显式把 `.BynINW_frame` 写进选择器列表，不靠「作者样式表内后者胜」这种顺序依赖。
+   这条规则带 `:has([class*="_sidebarCol"])` 结构锚点，特异度高于宿主外框那条，所以显式把外框
+   写进选择器列表，不靠「作者样式表内后者胜」这种顺序依赖。
    对照第 1 条：这里清的是**具体元素**上的声明，没有去覆盖 `--dsw-specific-sidebar-fill` 这个 token 本身，
    菜单与浮层不受影响。
 
@@ -142,12 +155,12 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 
 它们不是上面那九条约束，但同样是刻意的设计，改动前需要知道为什么：
 
-- **侧栏底部渐隐**：`._9lTDKa_fade`（24px，`linear-gradient(to bottom, transparent,
+- **侧栏底部渐隐**：`[class*="_sidebarCol"] [class*="_fade"]`（24px，`linear-gradient(to bottom, transparent,
   var(--dsw-specific-sidebar-fill))`）属于「不透明侧栏」时代的产物 —— 列表滚到底时用一截实色把文字压掉。
   侧栏已经是半透明照片后，这截实色终点与整块面板不再一致，所以清成 `transparent`。
   不要改它的 `height` / `position`：它只是视觉遮罩（`pointer-events:none`），
   清掉底色后列表滚动与命中区完全不变。（宿主自己也认为它不适合透明场景：darwin 下直接 `display:none`。）
-- **输入区底座渐变**：`.Dc7zOa_composerSeat` 的渐变清成 `transparent`，同时覆盖
+- **输入区底座渐变**：`[class*="_composerSeat"]` 的渐变清成 `transparent`，同时覆盖
   `[data-content-phase=active]`（内嵌会话 body 用的是另一个属性名，宿主为它写了一份同款渐变）。
   代价是滚到输入框下方的正文不再被 36px 实色带遮住，会一直透到照片上。
 
@@ -157,8 +170,8 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 
 | 列 | 实心度 | 对应常量 |
 | --- | --- | --- |
-| `.BynINW_sidebarCol` | `.58` | `SIDEBAR_ALPHA = 0.42` |
-| `.BynINW_centerCol` / `.BynINW_rightbarCol` | `.86` | 写死在规则里 |
+| `[class*="_sidebarCol"]` | `.58` | `SIDEBAR_ALPHA = 0.42` |
+| `[class*="_centerCol"]` / `[class*="_rightbarCol"]` | `.86` | 写死在规则里 |
 
 **`SIDEBAR_ALPHA` 的命名语义是「透明度」，不是「不透明度」**：
 

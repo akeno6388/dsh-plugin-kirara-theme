@@ -151,21 +151,22 @@ curl.exe -sS -k -D - -o NUL --max-redirs 0 `
 9. 半透明黑遮罩在位：`html::after` 恒为 `rgba(0,0,0,.55)`，**明暗两种主题下都不变**
    （切主题后确认：遮罩值不变，只有侧栏 / 内容区底色跟着换）
 10. **左侧栏半透明**：`rgba(20,22,28,.58)`（深）/ `rgba(249,250,252,.58)`（浅），
-    背景图透过侧栏可见；同时 `._2H3hWW_root` 的 `backgroundColor` = `rgba(0,0,0,0)`
-11. **主界面半透明**：`.BynINW_centerCol` 深色 ≈ `rgba(16,18,24,.86)` / 浅色 ≈ `rgba(252,252,253,.86)`，
-    且 `.Dc7zOa_root` 的 `backgroundColor` = `rgba(0,0,0,0)` —— 否则会话主界面会被自己的不透明底
+    背景图透过侧栏可见；同时侧栏内每个面板根（`[class*="_sidebarCol"] [class*="_root"]`）的
+    `backgroundColor` = `rgba(0,0,0,0)`
+11. **主界面半透明**：`[class*="_centerCol"]` 深色 ≈ `rgba(16,18,24,.86)` / 浅色 ≈ `rgba(252,252,253,.86)`，
+    且 `[class*="_root"][data-phase]` 的 `backgroundColor` = `rgba(0,0,0,0)` —— 否则会话主界面会被自己的不透明底
     整块盖住，照片只在侧栏看得见
-11b. **右侧栏同样半透明**：Windows 下宿主原生没给 `.BynINW_rightbarCol` 背景，靠插件补磨砂；
+11b. **右侧栏同样半透明**：Windows 下宿主原生没给 `[class*="_rightbarCol"]` 背景，靠插件补磨砂；
     否则外框透明后它会直接露出照片、正文失去衬底
 11c. **侧栏右上角圆角（Windows 桌面壳）**：`border-top-right-radius` = `16px`
     （取自 `--dsh-windows-content-radius`），与内容卡左上角圆角对称
-11d. **输入区底座不再有渐变**：`.Dc7zOa_composerSeat` 的 `backgroundColor` 必须是 `rgba(0,0,0,0)`，
+11d. **输入区底座不再有渐变**：`[class*="_composerSeat"]` 的 `backgroundColor` 必须是 `rgba(0,0,0,0)`，
     主界面从顶到底同一种透明度
-11e. **侧栏底部不再有渐隐遮罩**：`._9lTDKa_fade` 的 `backgroundColor` 必须是 `rgba(0,0,0,0)`，
+11e. **侧栏底部不再有渐隐遮罩**：`[class*="_sidebarCol"] [class*="_fade"]` 的 `backgroundColor` 必须是 `rgba(0,0,0,0)`，
     账户区上方不再有一条渐变条
 12. **菜单 / 弹出层 / 悬浮按钮不透明**（证明没有误改 `--dsw-specific-sidebar-fill`）。
     这一条同时是标题栏那条规则的体检：插件只覆盖顶层探针的计算后底色，没有覆盖 token 本身
-13. **Windows 顶栏整条直接显示背景图**：`.BynINW_frame` 与 `.BynINW_frame::before` 的
+13. **Windows 顶栏整条直接显示背景图**：`[class*="_frame"]:has([class*="_sidebarCol"])` 与它的 `::before` 的
     `backgroundColor` 都必须是 `rgba(0,0,0,0)`；**顶栏与下方内容区之间不应出现一条比照片更亮的横带**
     （那是宿主底色没清干净的典型症状）。顶栏**仍可拖动窗口**
 13b. **右上角窗口按钮那条不再是一块「另外的颜色」**：在 Console 里确认（就在本页，

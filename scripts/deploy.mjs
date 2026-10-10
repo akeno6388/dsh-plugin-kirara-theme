@@ -88,6 +88,20 @@ function sha256(file) {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
+/**
+ * 取出某个半边源码里的 `BOOT_MARKER` 字面量（`const BOOT_MARKER = '…';` / `var`）。
+ *
+ * 这是「运行时开关插件」那条链路的锚点：宿主把它拼在注入索引页的 `<style>` 前面，
+ * 客户端靠**同一个字面量**在卸载时把那份样式摘掉。两个字面量一旦漂移，
+ * 卸载就静默失效 —— 关掉插件后外观会一直留着，直到刷新页面（见不变量 7）。
+ * @param {string} source - 源码文本。
+ * @returns {string | undefined} 标记文本；找不到时 undefined。
+ */
+function readBootMarker(source) {
+  const match = source.match(/^[ \t]*(?:const|var) BOOT_MARKER = (['"])(.*?)\1;$/m);
+  return match ? match[2] : undefined;
+}
+
 /** 采集不变量报告（只读）。 */
 export function inspect() {
   const paths = resolvePaths();
@@ -245,6 +259,33 @@ export function inspect() {
   } catch (error) {
     check(false, '首屏 CSS 与客户端 CSS 同源', `校验脚本无法执行：${error.message} ← 改过规则数组的字面量写法？`);
   }
+
+  // 7) 首屏样式在「运行时关掉插件」时必须能被摘掉。
+  //    背景：`webserver/index-inject` 只在渲染索引页时 emit 一次，那行 `<style>`
+  //    写进 HTML 后就永久留在文档里 —— 宿主半边的清理只能「以后不再注入」，
+  //    碰不到已经送进浏览器的那一份。客户端半边必须按 BOOT_MARKER 把它一并移除，
+  //    否则关掉插件后背景 / 遮罩 / 半透明列全都还在（只有刷新页面才消失）。
+  const hostSource = readFileSync(join(pluginDir, 'lib', 'index.js'), 'utf8');
+  const clientSource2 = readFileSync(join(pluginDir, 'lib', 'client.js'), 'utf8');
+  const hostMarker = readBootMarker(hostSource);
+  const clientMarker = readBootMarker(clientSource2);
+  const hostMarksStyle = hostSource.includes('BOOT_MARKER +');
+  // 要的是「卸载路径里真的调了一次」，不是只有定义（定义行是 `function removeBootStyles() {`，压不上这个正则）。
+  const clientRemovesStyle =
+    clientSource2.includes('function removeBootStyles') && /^[ \t]*removeBootStyles\(\);$/m.test(clientSource2);
+  check(
+    hostMarker !== undefined && hostMarker === clientMarker && hostMarksStyle && clientRemovesStyle,
+    '首屏样式可回收（关掉插件后外观立刻还原）',
+    hostMarker === undefined || clientMarker === undefined
+      ? `BOOT_MARKER 缺失（宿主：${hostMarker ?? '无'} / 客户端：${clientMarker ?? '无'}）`
+      : hostMarker !== clientMarker
+        ? `两个半边的 BOOT_MARKER 不一致：宿主 ${JSON.stringify(hostMarker)} / 客户端 ${JSON.stringify(clientMarker)} ← 卸载会静默失效`
+        : !hostMarksStyle
+          ? '宿主注入首屏样式时没有拼上 BOOT_MARKER'
+          : !clientRemovesStyle
+            ? '客户端卸载时没有调用 removeBootStyles()'
+            : JSON.stringify(hostMarker),
+  );
 
   return result;
 }

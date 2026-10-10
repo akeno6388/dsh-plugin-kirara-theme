@@ -199,11 +199,41 @@ AppFrame 在文档流里是 `z-index:auto`，因此 0 / 1 不是「在其下」�
 
 修复：改成 `html` 上的负 z 伪元素加 `body` 透明，页面里不再有任何插件 DOM 节点。
 
+## 事故五：关掉插件后外观还在（首屏样式没人回收）
+
+**症状**：在插件列表里关掉开关后，背景图、`.55` 遮罩、三列半透明**原样留着**，
+只有刷新页面才消失；打开开关倒是立刻生效。
+
+**根因**：外观其实来自两份 `<style>`：
+
+| 样式 | 谁写的 | 运行时关插件时 |
+| --- | --- | --- |
+| `OVERRIDE_CSS`（客户端自己的） | 客户端挂载时 `document.head.appendChild` | 会消失：`dsh-client-modules` 随模块回收，插件自己的清理也会删 |
+| `bootCss()`（宿主写进索引页的） | `webserver/index-inject` 在**渲染索引页时**拼进 HTML 文本 | **不会消失**：它是静态文本，宿主进程的 `ctx.effect` 清理只能「以后不再注入」，够不着已经送进浏览器的这一份 |
+
+后者用的是裸 `:root` 选择器（客户端那份是 `:root[data-kirara-theme]`，属性一摘就失效），
+所以卸载后它继续生效 ⇒ 整套外观留在页面上。
+
+**修复**：宿主注入时在样式文本前拼上 `BOOT_MARKER`（`/*! kirara-theme-boot */`），
+客户端卸载时扫 `document.head` 里的 `<style>`、按标记把那一份摘掉。
+
+⚠️ 标记**必须拼在 `bootCss()` 的返回值之外**。塞进规则数组会直接破坏
+`check-css-parity.mjs` 的「逐行同源」断言 —— 那是另一条硬约束。
+
+**为什么不用「往行上加属性」**：`kind:"style"` 行渲染出来就是裸 `<style>…</style>`，
+渲染器不给它任何属性，所以只能靠文本标记认领。
+
+**自检**：`node scripts\deploy.mjs --check` 的第 7 项断言两个文件里的标记字面量一致、
+且卸载路径真的调了 `removeBootStyles()`。这条契约漂移的表现是**静默退化**
+（不报错，只是关不掉），只能靠断言和现象守。
+
 ## 常见故障速查
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| 装完毫无变化 | 没有完全重启 DSH，或 bundles 里没注册 | 重启 DSH；检查 `dsh.profile.bundles` |
+| 装完毫无变化 | **首次登记**后没有完全重启 DSH，或 bundles 里没注册 | 重启 DSH；检查 `dsh.profile.bundles`（登记过之后，开关是即时的，不需要重启） |
+| 关掉插件开关后背景 / 遮罩 / 半透明还在 | 宿主首屏样式没被回收（`BOOT_MARKER` 漂移，见事故五） | `node scripts\deploy.mjs --check` 看第 7 项；刷新页面可临时还原 |
+| 打开插件后先是渐变、过一会儿才出图 | 客户端没在挂载时立刻探到 `state.json` | 正常 ≤1.5s（暖机重试）；一直不出图按下一行查 |
 | 只有深色渐变 | 还没拿到远端图 | 检查服务器 302 与版本头；`POST /kirara-theme/refresh` |
 | 主界面是纯色面板 | 内层实色底没清掉（宿主换了容器 / 改了结构） | 见[已知限制](limitations.md)，用 DevTools 核对 `[class*="_root"][data-phase]` 与内容列内的面板根 |
 | 菜单和浮层都变半透明 | 误改了 `--dsw-specific-sidebar-fill` | 回退到只给列铺底色、内层清成 `transparent` |

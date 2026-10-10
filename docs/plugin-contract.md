@@ -48,6 +48,13 @@ window.__ModuleLoader__.load({
 - 副作用统一放进 `ctx.effect(fn, "label")`，`fn` 返回清理函数
 - 自建 `<style>` 必须同时带 `data-plugin` 与 `data-plugin-css` 两个属性，
   否则 `dsh-client-modules` 卸载时**回收不掉**这个 `<style>`
+- ⚠️ **索引页注入的样式不会被自动回收**。宿主半的 `webserver/index-inject` 只在
+  **渲染索引页时**才 emit，注入的 `<style>` 是写进 HTML 文本的静态内容；运行时卸载插件时，
+  宿主半的 `ctx.effect` 清理只能「以后不再注入」，碰不到当前这份。插件若两条通道都用
+  （本插件两条都用），客户端半边必须把它一并摘掉 —— 本插件用文本标记
+  `BOOT_MARKER` + `removeBootStyles()`（`kind:"style"` 行渲染出来是裸 `<style>`，
+  没有属性可挂，只能按文本认领）。否则症状是「关掉插件后外观还在，直到刷新页面」，
+  而且**不报任何错**
 - 定时器用原始 `setTimeout` / `setInterval` 加 `timer.unref()`
   （`ctx.setTimeout` / `ctx.setInterval` 已是废弃别名）
 

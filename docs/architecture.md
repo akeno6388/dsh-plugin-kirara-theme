@@ -11,7 +11,7 @@ dsh-plugin-kirara-theme/
 │   └── client.js         # 客户端半：外观 CSS / 背景图层 / 轮询 / 换图 / 标题栏近似色 / 清理
 ├── locale/{zh,en}.json   # 插件列表里显示的名称与描述
 ├── scripts/
-│   ├── deploy.mjs             # link + 部署 + 11 项不变量自检
+│   ├── deploy.mjs             # link + 部署 + 12 项不变量自检
 │   └── check-css-parity.mjs   # 首屏 CSS 与客户端 CSS 的「逐条同源」断言
 └── docs/
 ```
@@ -25,7 +25,8 @@ dsh-plugin-kirara-theme/
 | 外观层（背景 + 遮罩 + 三列半透明 + 侧栏圆角 + Windows 顶栏透明 + 侧栏底部渐隐去除 + 主界面底部渐变去除） | `lib/client.js`，注入一个 `<style>` |
 | 侧栏透明度 | `lib/index.js` 与 `lib/client.js` 的 `SIDEBAR_ALPHA` |
 | Windows 标题栏底色 | `lib/client.js` 的 `setCaptionFill()` / `createCaptionSampler()`，加 `OVERRIDE_CSS` 里那条探针规则 |
-| 首屏防白闪 | `lib/index.js` 的 `bootCss()`，以 `kind:"style"` 注入 `<head>` |
+| 首屏防白闪 | `lib/index.js` 的 `bootCss()`，以 `kind:"style"` 注入 `<head>`，文本前置 `BOOT_MARKER` |
+| 首屏样式的回收（关插件即时还原） | `lib/client.js` 的 `removeBootStyles()`（按 `BOOT_MARKER` 认领宿主那份 `<style>`） |
 | 背景图服务器同步 | `lib/index.js` 的 `syncOnce()` |
 | 同源背景路由 | `lib/index.js` 的 `createRouteHandler()` |
 | 版本变更轮询与换图 | `lib/client.js` 的 `createPoller()` / `createPhotoLayer()` |
@@ -221,13 +222,37 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 ```
 clearInterval / clearTimeout → 摘 visibilitychange 监听
 → photoLayer.dispose()（置 disposed、清 pending、removeProperty("--kirara-theme-photo")）
+→ captionSampler.dispose() + setCaptionFill("")（removeProperty("--kirara-caption-fill")）
 → document.documentElement.removeAttribute("data-kirara-theme")
+→ removeBootStyles()（按 BOOT_MARKER 摘掉宿主写进索引页的首屏 <style>）
 → 按 data-plugin-css 移除自建 <style>
 ```
 
-**唯一的「内联写入」只有一处**：往 `<html>` 写自定义属性 `--kirara-theme-photo`。
-所以回滚只需要一次 `removeProperty`，而不是「逐条还原」。除此之外插件没有改写任何既有元素的
-`style`，也没有 append 任何 DOM 节点 —— 这是刻意的设计，别改成往页面里塞图层节点。
+**唯一的「内联写入」只有两处**：往 `<html>` 写自定义属性 `--kirara-theme-photo` 与
+`--kirara-caption-fill`。所以回滚只需要两次 `removeProperty`，而不是「逐条还原」。
+除此之外插件没有改写任何既有元素的 `style`，也没有 append 任何 DOM 节点 ——
+这是刻意的设计，别改成往页面里塞图层节点。
+
+### 为什么必须自己摘掉宿主的首屏样式
+
+`webserver/index-inject` 是**渲染索引页时**才 emit 的：注入的 `<style>` 是写进 HTML 文本的静态
+内容，一旦送到浏览器就与宿主进程脱钩。运行时把插件关掉时，宿主半边的 `ctx.effect` 清理只能做到
+「以后渲染的页面不再注入」，**碰不到当前这一份**。于是外观会一直留着（背景、`.55` 遮罩、
+三列半透明、`body` 透明全都还在），直到整页刷新 —— 症状就是「关掉插件主题还在」。
+
+两条可选的解法都不如「按标记摘掉」干净：把首屏规则全部加上「仅在无标记时生效」的前缀会让每条
+选择器都要重写、并破坏与客户端 CSS 的逐行同源；而首屏样式本身在客户端挂载后就是**冗余**的
+（`OVERRIDE_CSS` 是它的超集，只差选择器前缀与那行动态取图），所以摘掉它没有任何视觉代价。
+
+标记写成 CSS 注释 `/*! kirara-theme-boot */`，**拼在 `bootCss()` 的返回值之外**
+（`BOOT_MARKER + '\n' + bootCss(...)`）。这样：
+
+- `check-css-parity.mjs` 仍然只比对纯 CSS，规则数组一个字不改；
+- 客户端只需要扫 `document.head` 下 `<style>` 的文本内容即可认领，不必依赖行内属性 ——
+  注意 `kind:"style"` 行渲染出来就是裸 `<style>…</style>`，**没有任何属性可以挂**。
+
+⚠️ 两个文件里的 `BOOT_MARKER` 必须逐字节一致；漂移的表现是「行为静默退化」
+（关插件后外观不消失，不报任何错），因此部署自检把这条单列成不变量 7。
 
 ## 宿主包必须声明为 `peerDependencies`
 

@@ -32,7 +32,7 @@
 
 ```powershell
 cd 'D:\works\Kirara Server Project\dsh-plugin-kirara-theme'
-node scripts\deploy.mjs            # 重新 link + 部署 + 11 项不变量自检
+node scripts\deploy.mjs            # 重新 link + 部署 + 12 项不变量自检
 node scripts\deploy.mjs --check    # 只自检，不动文件
 node scripts\deploy.mjs --enable   # 幂等确保 bundles 里有本插件
 node scripts\deploy.mjs --disable  # 幂等摘掉
@@ -48,7 +48,7 @@ node scripts\deploy.mjs --disable  # 幂等摘掉
 pnpm 在部署时会打印 `[WARN] Issues with peer dependencies found.` —— 也是正常的，
 因为宿主包被刻意声明成 peer 且不安装。
 
-### 11 项不变量
+### 12 项不变量
 
 任一失败 ⇒ exit 1。
 
@@ -65,6 +65,7 @@ pnpm 在部署时会打印 `[WARN] Issues with peer dependencies found.` —— 
 | 4 | 从副本入口 `require.resolve.paths()` 扫不到任何宿主包候选 | 运行时解析路径必须落在宿主侧 |
 | 5 | 副本入口 `lib/index.js` + `lib/client.js` 存在且均 > 1024 B | 防「假装部署成功」的空文件 |
 | 6 | 首屏 CSS（`bootCss()`）与客户端 CSS（`OVERRIDE_CSS`）**逐行同源** | 不同源 ⇒ 脚本接手瞬间换样式、闪帧 |
+| 7 | 首屏样式**可回收**：两个文件里的 `BOOT_MARKER` 字面量一致，宿主注入时拼上它、客户端卸载时调 `removeBootStyles()` | 不回收 ⇒ **关掉插件后外观还在**，只有刷新页面才消失；而且这条漂移**不报任何错**，静默退化 |
 
 `bundles` 里是否包含本插件**不算失败项**。它由 `printReport()` 单独以 `!` 开头提示，
 因为「没挂载」不等于「坏了」——`--check` 仍然返回成功。
@@ -80,14 +81,22 @@ node scripts\check-css-parity.mjs --dump    # 顺便打印首屏渲染出的完�
 
 ## 生效
 
+**改动代码之后**（部署了新的 `lib/*.js`）：
+
 ```
 1) 完全退出 DSH（不是关窗口、不是刷新页面）
 2) 重新启动
 3) 刷新 GUI，按验收清单核对
 ```
 
-`dsh.profile.bundles` **只在启动时读一次**，运行中的进程不会感知。客户端半的 HMR 只有在
+`dsh.profile.bundles` **只在启动时读一次**，运行中的进程不会感知；这份清单之外的东西
+（也就是这个插件的全部代码）同样只在启动时模块化加载一次。客户端半的 HMR 只有在
 `pnpm run dev:web` 同时运行时才免刷新，本插件不依赖它。
+
+**已经在运行、且插件已登记**时，插件列表里的**开关是即时的**：打开当帧铺上外观
+（照片紧随一次本机 `state.json` 请求），关掉当帧撤干净（含宿主写进索引页的首屏样式）。
+这条不依赖任何 HMR —— 走的是 `dsh-client-modules` 的条目增删 + 插件自己的
+`ctx.effect` 清理，见[架构文档](architecture.md)的「为什么必须自己摘掉宿主的首屏样式」。
 
 ## 无鉴权可达的路由探测
 
@@ -128,12 +137,13 @@ curl.exe -sS -k -D - -o NUL --max-redirs 0 `
 
 ## 验收清单
 
-没有单元测试。验证 = 部署自检 + 完全重启 + 手工核对。
+没有单元测试。验证 = 部署自检 + 完全重启 + 手工核对 + **运行时开关**（E 段，不需要重启）。
 
 ### A. 部署侧（无需重启）
 
 1. `node scripts\deploy.mjs --check` → 结尾 `✅ 不变量全部满足`，输出里有
-   `✓ 首屏 CSS 与客户端 CSS 同源`
+   `✓ 首屏 CSS 与客户端 CSS 同源` 与
+   `✓ 首屏样式可回收（关掉插件后外观立刻还原）`
 2. profile 的 `package.json` 里，`dependencies` 有 `@kirara/dsh-plugin-kirara-theme`，
    `dsh.profile.bundles` 末尾有 `"@kirara/dsh-plugin-kirara-theme"`
 3. `Test-Path "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@deepseek-ai"` → `False`
@@ -195,6 +205,28 @@ curl.exe -sS -k -D - -o NUL --max-redirs 0 `
 20. `POST /kirara-theme/invalidate` → 界面回到深色渐变（不报错、不空白）→ 下一次同步又拿回图片
 21. **断网 / 服务器 404 时**：保留当前已显示的图片，界面不回退、不报错、不闪白
 
-### E. 清理
+### E. 运行时开 / 关（无需重启、无需刷新）
 
-22. 验收完成后关掉自己起的探测进程与后台终端
+这一段专门验证「插件列表里的开关是即时的」。**不要**重启 DSH，也不要刷新页面 ——
+刷新会把首屏样式重新渲染一遍，反而盖住这条链路上唯一会坏的地方。
+
+22. **关掉开关**：外观当帧整个撤掉（背景图、`.55` 遮罩、三列半透明、顶栏透明全没），
+    回到宿主原本的观感。在 Console 里确认：
+    ```js
+    document.querySelectorAll('style[data-plugin-css="@kirara/dsh-plugin-kirara-theme/client.css"]').length  // → 0
+    [...document.querySelectorAll('style')].filter(s => s.textContent.includes('kirara-theme-boot')).length   // → 0
+    document.documentElement.hasAttribute('data-kirara-theme')                                                // → false
+    getComputedStyle(document.documentElement, '::before').content                                            // → "none"
+    getComputedStyle(document.querySelector('[class*="_sidebarCol"]')).backgroundColor                        // → 宿主原本的底色
+    ```
+    第三、四条是关键：**客户端 `<style>` 消失、而宿主那份首屏样式还在**时，
+    `::before` 仍是 `""`、侧栏还是半透明的 —— 那就是事故五复发（见部署自检第 7 项）。
+23. **再打开开关**：外观当帧回来，照片紧随一次本机 `state.json` 请求出现（≤1.5s），
+    不需要刷新页面。此时首屏样式**不会**被重新注入（索引页没有重渲染），这是预期行为 ——
+    客户端那份 CSS 是它的超集。
+24. **反复开 / 关 3 次**：每次都干净地「有 → 无 → 有」，没有残留的半透明、
+    没有叠加出多份 `<style>`、Console 也没有新增报错。
+
+### F. 清理
+
+25. 验收完成后关掉自己起的探测进程与后台终端

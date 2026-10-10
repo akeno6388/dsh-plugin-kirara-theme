@@ -10,7 +10,7 @@
 // ① 插件全局态（宿主注入 + 客户端读回）
 window.__KIRARA_THEME__
 // → { routePath:"/kirara-theme", imageUrl:"/kirara-theme/background.jpg?v=...",
-//     isDefault:false, version:"...", backdrop:"...", scrim:"rgba(0,0,0,.55)" }
+//     isDefault:false, version:"...", backdrop:"..." }
 
 // ② 标记属性（外观层已激活的唯一开关）
 document.documentElement.getAttribute('data-kirara-theme')   // → "kirara"
@@ -88,19 +88,36 @@ preload（在本页运行 —— window === window.top）
 > 整条链路静默失效，症状是右上角永远不变且没有任何报错。
 > 别再引入跨文档注入或 `window.top` 守卫。
 
-### 标题栏不吃任何透明值
+### 「标题栏不吃任何透明值」是旧结论，已被推翻
 
-三次实测把「真透明」彻底排除：
+早期这里记过「只有不透明色才生效」，并据此做了采样近似色。复测确认**那个结论是错的**，
+错的根源有两条 —— 都是链路问题，不是渲染限制：
 
-| 推过去的值 | 结果 |
-| --- | --- |
-| `rgba(0, 0, 0, 0.55)` | 界面毫无变化（被忽略，不是被压成透明） |
-| `transparent`（探针 computed 直接设成透明） | 界面毫无变化 |
-| `rgb(255, 0, 170)`（不透明） | 立刻变色 |
+- 显式 `transparent` **过不了宿主的值校验**。主进程只放行
+  `/^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu` —— 关键字根本不会被推送，颜色自然「毫无变化」。
+- 变量写在本页 `<html>` 的**行内样式**上不触发重推。宿主只在 root 的 `lang`、
+  `body` 的 `data-ds-dark-theme` / `style`、`head` 的 childList/subtree/characterData 变化时
+  重新读探针；改 `<html>` 的 `style` 不在其中（首屏能生效靠的是 `head` 里那次样式插入，
+  之后换图重算的值就送不出去了）。观察到的「怎么改都不动」多半是这一条。
 
-结论：`titleBarOverlay` 只接受**不透明**颜色，`transparent` 与带 alpha 的值会被 Electron 或 DWM
-当作无效值直接忽略（标题栏保持上一次的颜色）。所以「直接设成透明」不是没试过，而是物理上不可行，
-采样近似色是唯一手段。
+**决定性复测**（打包版 Electron 44.0.0、150% DPI；页面顶 40px 纯品红 `#ff00ff`、其余纯绿，
+读取窗口按钮区的像素普查）：
+
+| 推过去的 overlay 色 | 按钮区像素 | 结论 |
+| --- | --- | --- |
+| `rgba(0, 0, 0, 0)` | 品红 6006 / 暗色 78（只有三个字形笔画） | 底色**完全透明**，页面原样透出 |
+| `rgba(255, 255, 255, 0.004)`（插件实际推的值） | 品红 6005 / 暗色 78 | 与 alpha=0 无差别 ⇒ 1/255 的白膜不可见 |
+| `#1b1b1c`（不透明） | 暗色 4923 / 品红 1188 | 铺出一条实色带 |
+
+**怎么复测**：写一个最小 Electron app（同样的 `titleBarStyle:'hidden'` +
+`titleBarOverlay:{ height:40, color:X }`），页面顶部 40px 铺纯品红 `#ff00ff`、其余纯绿；
+窗口显示后用 `desktopCapturer.getSources()` 抓屏，在「窗口右边缘向左 170px × 顶部 2–38px」
+这块做像素普查：
+
+- 透明 ⇒ 绝大多数像素是品红，只有约 78 个暗像素（三个字形笔画）
+- 不透明 ⇒ 几千个实色像素（推 `#1b1b1c` 时是 4923 个暗像素 + 1188 个品红）
+
+这套探针不碰宿主进程、也不依赖插件。结论：**推带 alpha 的颜色就能让那条带子彻底消失**。
 
 ### 其它入口都不通
 
@@ -111,35 +128,37 @@ monkey-patch `ipcRenderer.send` 也不是可行方案（preload 的 `require` �
 
 ### 本插件的做法
 
-- `OVERRIDE_CSS` / `bootCss()` 里一条普通规则，把探针的 `background-color` 指到 CSS 变量
-  `--kirara-caption-fill`（只改这个探针元素的声明，不覆盖 `--dsw-specific-sidebar-fill` 本身）
-- 该变量由 `createCaptionSampler()` 算出、经 `setCaptionFill()` 写在**本页 `<html>`** 的行内样式上：
-  重做 `background-size:cover` 与 `center` 的缩放与居中裁剪，在「距右边缘 60px、纵向 4px」处
-  取一块 **160×28 屏幕像素**的平均色 —— 不是单像素，单点取样会让整条带子偏成那一个像素的色调
+`OVERRIDE_CSS` / `bootCss()` 里两条普通规则，把探针的 `background-color` 直接设成全透明
+（只改这个探针元素的声明，不覆盖 `--dsw-specific-sidebar-fill` 本身）：
 
-### 取色公式
-
-```
-标题栏 = 操作系统画在网页之上的一层（Electron titleBarOverlay / DWM）
-       ⇒ 没有任何东西会再压在它上面，它的观感就是我们推过去的颜色 X
-
-它底下露出的顶栏 = 照片 + html::after 遮罩 = (1-a)·photo + a·scrim
-
-要让两者一致 ⇒  X = (1-a)·photo + a·scrim      ← 只合成一次
+```css
+:root[data-kirara-theme] span[style*="--dsw-specific-sidebar-fill"]{
+  background-color:rgba(255,255,255,0.004)!important;
+}
+:root[data-kirara-theme] body[data-ds-dark-theme] span[style*="--dsw-specific-sidebar-fill"]{
+  background-color:rgba(0,0,0,0)!important;
+}
 ```
 
-**不要把 X 写成「反解」** `(photo - a·scrim)/(1-a)`。它基于一个错误前提
-（「浏览器会把遮罩再压到标题栏上」）—— 标题栏在网页之上，遮罩压不到它；
-反解会让标题栏比顶栏更亮。推导已固化在 `lib/client.js` 的 `captionColorFor()` 注释里。
+- **alpha ≈ 0** ⇒ 宿主把那层底色设成全透明，顶栏（照片 + `html::after` 遮罩）原样透出。
+- **浅色那条写 1/255（`0.004`）而不是 0**：宿主读到的颜色会过一次 canvas
+  （`fillStyle` + `fillRect` → `getImageData`），alpha=0 时 RGB 被抹成 0
+  ⇒ 推过去就是 `rgba(0, 0, 0, 0)`，「浅色兜底白」留不住；1/255 能原样过关。
+  实测这条带子的观感与 alpha=0 完全一致，看不到任何白膜（见下表的复测数据）。
+- **RGB 分量不是随便给的**：宿主若只取 RGB（旧实现如此），带子会退回那个颜色 ⇒
+  浅色主题白 / 深色主题黑，正是「实在透明不了」时的兜底实色。
+- **深色主题必须单独一条**：`PD` 前缀特异度更高，否则会被浅色那条的 `rgba(255,255,255,0)` 吃掉。
+- 系统开启「降低透明度」时，同一段媒体查询里把探针改回 `var(--dsw-specific-sidebar-fill)`，
+  与三个列一起退回实色 —— 那里深浅两套前缀都要写，理由同上。
 
-换图、窗口 resize（防抖 200ms）都会重采；canvas 被污染或解码失败时静默放弃，
-规则回落到 `rgba(0,0,0,.55)`。卸载时 `captionSampler.dispose()` + `setCaptionFill("")` 摘掉变量。
+客户端半**不再参与**这条链路：`createCaptionSampler()` 与 `--kirara-caption-fill` 已随本次修复删除
+（采样只能给整条带子一个颜色，而带子底下的照片横向有变化，注定有色差）。
 
 > **不允许**为了这条链路去改 `resources/app.asar` 里的 `lib/main.js` / `lib/preload-app.cjs`：
 > 那是 DSH 安装目录、会被升级覆盖，改它等于破解宿主。
 
-> 像素级完美不可能：标题栏是整条窗口宽一个颜色，而它下面的照片横向有变化 ——
-> 取小块平均色能让按钮簇附近最贴合，离得越远越可能看出轻微色差。
+> 透明底上三个按钮图标直接压在顶栏上：图标颜色仍来自探针的 `color`
+>（`var(--dsw-alias-label-primary)`），对比度只由 `.55` 黑遮罩兜底 —— 与顶栏其余控件同一层遮罩。
 
 ## 事故一：所有工具调用崩在 `Cannot read properties of undefined (reading 'prepare')`
 
@@ -237,6 +256,6 @@ AppFrame 在文档流里是 `z-index:auto`，因此 0 / 1 不是「在其下」�
 | 只有深色渐变 | 还没拿到远端图 | 检查服务器 302 与版本头；`POST /kirara-theme/refresh` |
 | 主界面是纯色面板 | 内层实色底没清掉（宿主换了容器 / 改了结构） | 见[已知限制](limitations.md)，用 DevTools 核对 `[class*="_root"][data-phase]` 与内容列内的面板根 |
 | 菜单和浮层都变半透明 | 误改了 `--dsw-specific-sidebar-fill` | 回退到只给列铺底色、内层清成 `transparent` |
-| 右上角标题栏一直是实色带 | 探针规则没匹配到，或采样失败 | 核对 `--kirara-caption-fill` 与探针元素 |
+| 右上角标题栏出现实色带 | ① 探针规则没匹配到（探针行内 style 的文本变了）；② 宿主不吃带 alpha 的 overlay 色 ⇒ 退回 RGB 分量 | 核对探针元素的计算后 `background-color` 是否为 `rgba(...,0)`（浅色白 / 深色黑是兜底实色）；见上文「Windows 标题栏底色」 |
 | 首屏闪一下 | 两份 CSS 不同源 | `node scripts\check-css-parity.mjs` |
 | 工具调用全崩在 `undefined.prepare` | profile 里有宿主包物理副本 | `node scripts\deploy.mjs --check` 定位，然后重新部署 |

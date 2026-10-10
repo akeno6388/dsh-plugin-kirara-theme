@@ -8,7 +8,7 @@ dsh-plugin-kirara-theme/
 ├── cordis.patch.yml      # bundle patch（顶层 YAML 数组，config 整行替换）
 ├── lib/
 │   ├── index.js          # 宿主半：Config / 路由 / 同步 / 磁盘缓存 / bootCss / bootGlobal
-│   └── client.js         # 客户端半：外观 CSS / 背景图层 / 轮询 / 换图 / 标题栏近似色 / 清理
+│   └── client.js         # 客户端半：外观 CSS / 背景图层 / 轮询 / 换图 / 清理
 ├── locale/{zh,en}.json   # 插件列表里显示的名称与描述
 ├── scripts/
 │   ├── deploy.mjs             # link + 部署 + 12 项不变量自检
@@ -24,7 +24,7 @@ dsh-plugin-kirara-theme/
 | --- | --- |
 | 外观层（背景 + 遮罩 + 三列半透明 + 侧栏圆角 + Windows 顶栏透明 + 侧栏底部渐隐去除 + 主界面底部渐变去除） | `lib/client.js`，注入一个 `<style>` |
 | 侧栏透明度 | `lib/index.js` 与 `lib/client.js` 的 `SIDEBAR_ALPHA` |
-| Windows 标题栏底色 | `lib/client.js` 的 `setCaptionFill()` / `createCaptionSampler()`，加 `OVERRIDE_CSS` 里那条探针规则 |
+| Windows 标题栏底色 | `OVERRIDE_CSS` / `bootCss()` 里那条探针规则（把 preload 探针算成全透明）；客户端半不参与 |
 | 首屏防白闪 | `lib/index.js` 的 `bootCss()`，以 `kind:"style"` 注入 `<head>`，文本前置 `BOOT_MARKER` |
 | 首屏样式的回收（关插件即时还原） | `lib/client.js` 的 `removeBootStyles()`（按 `BOOT_MARKER` 认领宿主那份 `<style>`） |
 | 背景图服务器同步 | `lib/index.js` 的 `syncOnce()` |
@@ -222,14 +222,13 @@ html 背景/边框 → 负 z 的子堆叠上下文（html::before / html::after�
 ```
 clearInterval / clearTimeout → 摘 visibilitychange 监听
 → photoLayer.dispose()（置 disposed、清 pending、removeProperty("--kirara-theme-photo")）
-→ captionSampler.dispose() + setCaptionFill("")（removeProperty("--kirara-caption-fill")）
 → document.documentElement.removeAttribute("data-kirara-theme")
 → removeBootStyles()（按 BOOT_MARKER 摘掉宿主写进索引页的首屏 <style>）
 → 按 data-plugin-css 移除自建 <style>
 ```
 
-**唯一的「内联写入」只有两处**：往 `<html>` 写自定义属性 `--kirara-theme-photo` 与
-`--kirara-caption-fill`。所以回滚只需要两次 `removeProperty`，而不是「逐条还原」。
+**唯一的「内联写入」只有一处**：往 `<html>` 写自定义属性 `--kirara-theme-photo`。
+所以回滚只需要一次 `removeProperty`，而不是「逐条还原」。
 除此之外插件没有改写任何既有元素的 `style`，也没有 append 任何 DOM 节点 ——
 这是刻意的设计，别改成往页面里塞图层节点。
 

@@ -179,22 +179,23 @@ curl.exe -sS -k -D - -o NUL --max-redirs 0 `
 13. **Windows 顶栏整条直接显示背景图**：`[class*="_frame"]:has([class*="_sidebarCol"])` 与它的 `::before` 的
     `backgroundColor` 都必须是 `rgba(0,0,0,0)`；**顶栏与下方内容区之间不应出现一条比照片更亮的横带**
     （那是宿主底色没清干净的典型症状）。顶栏**仍可拖动窗口**
-13b. **右上角窗口按钮那条不再是一块「另外的颜色」**：在 Console 里确认（就在本页，
+13b. **右上角窗口按钮那条的底色是全透明的**：在 Console 里确认（就在本页，
     不要去找 `window.top` —— 探针就在本页，`window === window.top`）：
     ```js
     const probe = [...document.querySelectorAll('span')]
       .find(s => (s.getAttribute('style') || '').includes('dsw-specific-sidebar-fill'));
-    getComputedStyle(document.documentElement).getPropertyValue('--kirara-caption-fill')  // → "rgb(r, g, b)"
-    getComputedStyle(probe).backgroundColor                                                // → 同上
+    getComputedStyle(probe).backgroundColor   // 浅色 → "rgba(255, 255, 255, 0.004)"；深色 → "rgba(0, 0, 0, 0)"
     document.querySelector('style[data-plugin-css="@kirara/dsh-plugin-kirara-theme/client.css"]')  // → 存在
     ```
-    观感上标题栏与正下方的顶栏看不出接缝。采样失败时允许回落到 `rgba(0,0,0,.55)`，会略有色差但不报错
-13c. **窗口缩放后接缝依旧**：拖动窗口宽度（改变 `cover` 裁剪）后约 200ms，
-    `--kirara-caption-fill` 应重新算出新值
+    浅色的 1/255 alpha 是刻意的（宿主会把 alpha=0 的 RGB 抹掉，这样才保住「浅色兜底白」），
+    实测与 0 无观感差别。观感上：三个按钮图标**直接画在顶栏（照片 + 遮罩）上**，
+    没有任何色带、没有方块感。浅色 / 深色各验一次（切主题后宿主会重推一次颜色）
+13c. **窗口缩放后依旧没有色带**：拖动窗口宽度改变 `cover` 裁剪，带子不应重新出现
+    （置成全透明后不再依赖任何采样，缩放天然无影响）
 14. 侧栏折叠 / 展开、切换页面、开关对话框均正常，无布局错位
 15. DevTools 里的核对脚本全部命中（见[故障排查](troubleshooting.md)）
 16. 关闭系统「透明效果」或系统要求降低透明度时，三个列的磨砂**退回不透明底**，
-    主界面底部也一并回到宿主原样。标题栏此时回到宿主原本的实色
+    主界面底部也一并回到宿主原样；标题栏那条也一起退回 `--dsw-specific-sidebar-fill` 实色
 
 ### D. 服务器同步侧
 

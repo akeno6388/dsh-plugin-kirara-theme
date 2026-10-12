@@ -28,6 +28,29 @@
 
 宿主包已经写在 `peerDependencies`，**不要**改成 `dependencies`，理由见[架构文档](architecture.md)。
 
+### 升级到新提交（按提交安装的 profile）
+
+有的 profile 不用 `file:`，而是按提交安装（EduWork 桌面端的 `desktop-*` profile 就是这样）：
+
+```jsonc
+"@kirara/dsh-plugin-kirara-theme": "git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git#<足 40 位 sha>"
+```
+
+这种装法有三条硬规矩：
+
+- **sha 是钉死的**：在插件管理界面「重新安装」只会重新拉取同一个 sha —— 旧提交会原样回来，
+  代码看起来「被还原了」。要让新提交生效，必须把 spec 换成新 sha，然后在 profile 目录跑一次
+  `pnpm install`（或做一次会重新解析分支的更新）。
+- **不要手改 `node_modules` 里的文件**：手工拷贝看起来生效，但任何一次 `pnpm install`
+  （应用启动时的对账、插件管理界面的任意操作）都会按 tarball 的完整性把文件还原成该 sha 的内容，
+  改动静默消失。要改就改 spec，别改物化产物。
+- **`#<sha>` 与 `#main` 是两条不同的抓取路径**：`#<sha>` 直接 GET
+  `codeload.github.com/.../tar.gz/<sha>`，不需要 git；`#main` 要先 `git fetch` 解析分支。
+  本机 `github.com:443` 直连不通，代理只写在**插件仓库的本地** git 配置里
+  （`http.proxy=http://127.0.0.1:7897`），而 pnpm 解析分支用的是它自己临时目录里的 git 仓库
+  （读不到那份本地配置）⇒ `#main` 会以 `Failed to connect to github.com port 443` 失败。
+  这个环境里坚持用 `#<sha>`。
+
 ## 部署脚本
 
 ```powershell

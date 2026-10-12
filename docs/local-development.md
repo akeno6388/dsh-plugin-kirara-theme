@@ -9,7 +9,7 @@
 ```jsonc
 {
   "dependencies": {
-    "@kirara/dsh-plugin-kirara-theme": "file:D:/works/Kirara Server Project/dsh-plugin-kirara-theme"
+    "@kirara/dsh-plugin-kirara-theme": "file:<工作区根>/dsh-plugin-kirara-theme"
   },
   "dsh": {
     "profile": {
@@ -47,14 +47,14 @@
 - **`#<sha>` 与 `#main` 是两条不同的抓取路径**：`#<sha>` 直接 GET
   `codeload.github.com/.../tar.gz/<sha>`，不需要 git；`#main` 要先 `git fetch` 解析分支。
   本机 `github.com:443` 直连不通，代理只写在**插件仓库的本地** git 配置里
-  （`http.proxy=http://127.0.0.1:7897`），而 pnpm 解析分支用的是它自己临时目录里的 git 仓库
-  （读不到那份本地配置）⇒ `#main` 会以 `Failed to connect to github.com port 443` 失败。
-  这个环境里坚持用 `#<sha>`。
+  （`http.proxy=http://127.0.0.1:7897` —— 端口是本机代理的，换成你自己的），而 pnpm 解析分支
+  用的是它自己临时目录里的 git 仓库（读不到那份本地配置）⇒ `#main` 会以
+  `Failed to connect to github.com port 443` 失败。这类受限网络环境里坚持用 `#<sha>`。
 
 ## 部署脚本
 
 ```powershell
-cd 'D:\works\Kirara Server Project\dsh-plugin-kirara-theme'
+cd <插件仓库>
 node scripts\deploy.mjs            # 重新 link + 部署 + 12 项不变量自检
 node scripts\deploy.mjs --check    # 只自检，不动文件
 node scripts\deploy.mjs --enable   # 幂等确保 bundles 里有本插件

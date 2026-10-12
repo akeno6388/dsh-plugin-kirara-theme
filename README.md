@@ -65,21 +65,52 @@
 
 ## 安装
 
-### 1. 添加插件
+插件通过 **DSH 插件管理**安装 —— 不需要手工编辑 profile 的 JSON：DSH 会把它写进
+`dsh.profile.bundles`，并用 pnpm 把依赖物化到 `profiles/<profile>/node_modules`。
 
-侧栏 **插件** → **添加插件**，填入仓库地址：
+GUI 入口：侧栏 **插件** → **添加插件** → 粘贴获取地址。
+命令行等价物：`dsh plugin --profile <profile> add <spec>`。
+
+### 1. 选获取方式
+
+只认下面四种写法，**推荐第 1 种**：
+
+| # | 写法 | 需要 git / SSH key | 适用场景 |
+| --- | --- | --- | --- |
+| 1 | `git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git#<40 位 commit sha>` | **不需要** —— pnpm 直接下 codeload 压缩包 | **推荐**：给别人的机器装，或要可复现的版本 |
+| 2 | `git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git#main` | 需要 —— 先 `git ls-remote` 解析「分支现在指向哪个 commit」 | 自己的机器，想一直跟最新 |
+| 3 | `file:<绝对路径>` / `link:<绝对路径>` | 不需要 | 本地开发，改完源码立刻生效 |
+| 4 | `@kirara/dsh-plugin-kirara-theme` | — | 发布到 npm 之后（尚未发布） |
+
+**推荐写法 —— 钉 commit：**
+
+```powershell
+git ls-remote https://github.com/akeno6388/dsh-plugin-kirara-theme.git refs/heads/main
+# 把回显里的 40 位 sha 填进下面这行
+```
 
 ```
-git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git
+git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git#<40 位 sha>
 ```
 
-也接受 `https://github.com/akeno6388/dsh-plugin-kirara-theme` 和本地绝对路径。
-命令行等价物是 `dsh plugin --profile <profile> add <spec>`。
+钉 commit 的好处：本机**不需要** git、也不需要 SSH key，而且同一串 sha 在任何机器上都得到同一份代码。
 
-用 `git+https://` 而不是 `github:owner/repo` 简写：pnpm 会把简写改写成 `git+ssh://`，
-没配 GitHub SSH key 的机器会直接 `Host key verification failed`。
+#### 跟 `main`：先掰掉 ssh
 
-如果 `github.com:443` 访问超时，可以换 Gitee 镜像地址。
+写分支名时，pnpm 会用 hosted-git-info 把 GitHub 地址规范化成 `git+ssh://git@github.com/…` ——
+**无论你写的是 `github:owner/repo` 简写还是完整的 `git+https://`**。没配 GitHub SSH key 的机器直接
+`Host key verification failed`。先加这两条 git 配置，把 ssh 掰回 https（前缀很窄，只匹配 pnpm 生成的
+这种 URL，不影响平时 `git@github.com:owner/repo` 的用法）：
+
+```powershell
+git config --global --add 'url.https://github.com/.insteadOf' 'git+ssh://git@github.com/'
+git config --global --add 'url.https://github.com/.insteadOf' 'ssh://git@github.com/'
+```
+
+⚠️ 必须用 `--add`：同一个 key 写两次，第二次会**覆盖**第一次而不是并存。
+
+GitHub 的 443 时通时断，`git ls-remote` 偶发超时（实测同一条命令 2 秒通、21 秒超时都出现过），
+重试一次通常就好；长期不通再考虑换 Gitee 镜像地址。
 
 ### 2. 启用
 
@@ -96,6 +127,11 @@ git+https://github.com/akeno6388/dsh-plugin-kirara-theme.git
 
 登记过、重启过之后，插件列表里的开关就是即时的了（见上一节），不必再重启。
 重启后刷新 GUI 应该就能看到背景图 —— 用的是插件默认的公开图源，不需要额外配置。
+
+### 4. 卸载
+
+在插件页移除该插件，DSH 会同时清掉 `dependencies` 与 `dsh.profile.bundles` 里的条目；
+之后**完全重启 DSH**。
 
 ## 使用
 
@@ -213,7 +249,18 @@ curl.exe -sS -X POST http://127.0.0.1:19387/kirara-theme/invalidate
 
 ## 升级
 
-插件暂不支持自动更新。先在插件页卸载，再用新地址重装一次。
+插件**没有自动更新**：DSH 把依赖写成 `git+…` 地址，**装上那一刻是什么就一直是那个**，
+上游有新提交也不会自己跟。取新 sha：
+
+```powershell
+git ls-remote https://github.com/akeno6388/dsh-plugin-kirara-theme.git refs/heads/main
+```
+
+把 profile 依赖里的 `#<旧 sha>` 换成新的，再在插件页重装一次（或做一次会重新解析的 `pnpm install`），
+然后**完全退出 DSH 再启动**，并**开新会话**验证 —— 旧会话已经录下了旧版本的模块。
+
+⚠️ 在插件管理界面点「重新安装」**只会重新拉取同一个 sha**，代码看起来「被还原了」——
+要让新提交生效必须换 spec，别手改 `node_modules`（详见[本地开发](docs/local-development.md)）。
 
 ## 常见问题
 

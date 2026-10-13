@@ -17,8 +17,7 @@
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
-    "lib/index.js",
-    "lib/client.js",
+    "lib/",
     "cordis.patch.yml",
     "locale/*.json",
     "README.md"

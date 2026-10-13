@@ -114,11 +114,11 @@ function assertNoNaN(css, label) {
  */
 export function compareSidebarConsts() {
   const clientSource = readFileSync(join(pluginDir, 'lib', 'client.js'), 'utf8');
-  const hostSource = readFileSync(join(pluginDir, 'lib', 'index.js'), 'utf8');
+  const hostSource = readFileSync(join(pluginDir, 'lib', 'impl.js'), 'utf8');
   const mismatches = [];
   for (const name of SIDEBAR_CONSTS) {
     const clientValue = readConst(clientSource, name, 'lib/client.js');
-    const hostValue = readConst(hostSource, name, 'lib/index.js');
+    const hostValue = readConst(hostSource, name, 'lib/impl.js');
     if (clientValue !== hostValue) {
       mismatches.push({ name, host: hostValue, client: clientValue });
     }
@@ -163,11 +163,11 @@ function clientCss() {
 
 /** 求出宿主 `bootCss()` 的最终文本（`photo` 取 null ⇒ 不带首屏取图行）。 */
 function hostCss() {
-  const source = readFileSync(join(pluginDir, 'lib', 'index.js'), 'utf8');
+  const source = readFileSync(join(pluginDir, 'lib', 'impl.js'), 'utf8');
   const bootStart = source.indexOf('function bootCss(config)');
   if (bootStart < 0) throw new Error('lib/index.js: 找不到 bootCss()');
-  const photoVar = readConst(source, 'PHOTO_VAR', 'lib/index.js');
-  const backdrop = readConst(source, 'DEFAULT_BACKDROP_CSS', 'lib/index.js');
+  const photoVar = readConst(source, 'PHOTO_VAR', 'lib/impl.js');
+  const backdrop = readConst(source, 'DEFAULT_BACKDROP_CSS', 'lib/impl.js');
   const returnAt = source.indexOf('return [\n', bootStart);
   if (returnAt < 0) throw new Error('lib/index.js: bootCss() 里找不到 `return [`');
   const tail = '].concat(photo ? [photo] : [])';
@@ -196,12 +196,12 @@ function hostCss() {
       null,
       photoVar,
       backdrop,
-      readConst(source, 'SIDEBAR_FILL_LIGHT', 'lib/index.js'),
-      readConst(source, 'SIDEBAR_FILL_DARK', 'lib/index.js'),
-      boundFillAlpha(readConst(source, 'SIDEBAR_ALPHA', 'lib/index.js')),
+      readConst(source, 'SIDEBAR_FILL_LIGHT', 'lib/impl.js'),
+      readConst(source, 'SIDEBAR_FILL_DARK', 'lib/impl.js'),
+      boundFillAlpha(readConst(source, 'SIDEBAR_ALPHA', 'lib/impl.js')),
       `return (${expression}).join("\\n");`,
     ),
-    'lib/index.js',
+    'lib/impl.js',
   );
 }
 

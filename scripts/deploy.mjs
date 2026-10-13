@@ -205,7 +205,7 @@ export function inspect() {
   //    locale/*.json 提供插件列表里的标题与描述，漂移了不会报错、只会静默显示旧文案，
   //    所以必须逐字节比。
   const mismatches = [];
-  for (const rel of ['package.json', 'lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'README.md', 'locale/en.json', 'locale/zh.json']) {
+  for (const rel of ['package.json', 'lib/index.js', 'lib/impl.js', 'lib/update.js', 'lib/build-info.js', 'lib/client.js', 'cordis.patch.yml', 'README.md', 'locale/en.json', 'locale/zh.json']) {
     const deployed = join(installedDir, rel);
     if (!existsSync(deployed)) {
       mismatches.push(`${rel} 缺失`);
@@ -237,13 +237,14 @@ export function inspect() {
     candidates.length ? `发现：${candidates.join(', ')}` : '全部候选都不存在 ⇒ 必然走宿主 runtime resolution',
   );
 
-  // 5) 副本是否已构建态可用（lib/index.js / lib/client.js 存在且非空）
+  // 5) 副本是否可用：引导层（lib/index.js，很薄）+ 实现层（lib/impl.js）+ 浏览器半边（lib/client.js）
   const entry = join(installedDir, 'lib', 'index.js');
+  const impl = join(installedDir, 'lib', 'impl.js');
   const client = join(installedDir, 'lib', 'client.js');
   check(
-    existsSync(entry) && statSync(entry).size > 1024 && existsSync(client) && statSync(client).size > 1024,
-    '副本入口 lib/index.js + lib/client.js 可用',
-    `${existsSync(entry) ? statSync(entry).size : '缺失'} B / ${existsSync(client) ? statSync(client).size : '缺失'} B`,
+    existsSync(entry) && statSync(entry).size > 512 && existsSync(impl) && statSync(impl).size > 1024 && existsSync(client) && statSync(client).size > 1024,
+    '副本入口 lib/index.js（引导层）+ lib/impl.js（实现层）+ lib/client.js 可用',
+    `${existsSync(entry) ? statSync(entry).size : '缺失'} B / ${existsSync(impl) ? statSync(impl).size : '缺失'} B / ${existsSync(client) ? statSync(client).size : '缺失'} B`,
   );
 
   // 6) 首屏 CSS 与客户端 CSS 同源（README §4.2 硬约束，防「首帧一个样、脚本接手后另一个样」）
@@ -265,7 +266,7 @@ export function inspect() {
   //    写进 HTML 后就永久留在文档里 —— 宿主半边的清理只能「以后不再注入」，
   //    碰不到已经送进浏览器的那一份。客户端半边必须按 BOOT_MARKER 把它一并移除，
   //    否则关掉插件后背景 / 遮罩 / 半透明列全都还在（只有刷新页面才消失）。
-  const hostSource = readFileSync(join(pluginDir, 'lib', 'index.js'), 'utf8');
+  const hostSource = readFileSync(join(pluginDir, 'lib', 'impl.js'), 'utf8');
   const clientSource2 = readFileSync(join(pluginDir, 'lib', 'client.js'), 'utf8');
   const hostMarker = readBootMarker(hostSource);
   const clientMarker = readBootMarker(clientSource2);

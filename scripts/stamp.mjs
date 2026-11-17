@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * 写发版印章：把「最后一次改到 lib/impl.js 的提交」的 sha 写进 lib/build-info.js。
+ * 写发版印章：把「最后一次改到 lib/ 的提交」的 sha 写进 lib/build-info.js。
  * ---------------------------------------------------------------------------
  * 为什么需要它：插件自更新时要判断「我这份实现对应哪个提交」。印章缺失（null）也能跑，
  * 只是界面会把随包安装的那份显示成「未知提交」。
  *
  * ⚠️ 取的是**实现层最后一次变更**的提交，不是 HEAD —— 与内核里
- *    GET /repos/<repo>/commits?path=lib/impl.js 的判据完全一致。
- *    这样纯文档提交不会把「已是最新」变成「有新版本」，印章也不会因为随后的提交而失效。
+ *    GET /repos/<repo>/commits?path=lib 的判据同口径：`lib/` 覆盖 index.js、
+ *    client.js、update.js 等，只改这些文件也必须算「有更新」。
+ *    但**必须排除印章文件自己**（它也在 lib/ 里）：不排除的话，写完印章的那个提交
+ *    会把 lib/ 的 tip 推前一个提交，`--check` 永远对不上，刚发版就显示「有新版本」。
  *
  * 用法：
  *   node scripts/stamp.mjs           # 写入
@@ -22,14 +24,17 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(HERE, '..');
 const TARGET = path.join(REPO_DIR, 'lib', 'build-info.js');
-const IMPL_PATH = 'lib/impl.js';
+/** 实现层目录（与 lib/update.js 的 IMPL_PATH 同口径）。 */
+const IMPL_PATH = 'lib';
+/** 印章文件自己不算实现层改动。 */
+const STAMP_PATH = 'lib/build-info.js';
 
 function git(args) {
   return execFileSync('git', ['-C', REPO_DIR, ...args], { encoding: 'utf8' }).trim();
 }
 
 /** 实现层最后一次变更的提交；仓库刚建、文件未提交时退回 HEAD。 */
-const head = git(['log', '-1', '--format=%H', '--', IMPL_PATH]) || git(['rev-parse', 'HEAD']);
+const head = git(['log', '-1', '--format=%H', '--', IMPL_PATH, ':(exclude)' + STAMP_PATH]) || git(['rev-parse', 'HEAD']);
 // 印章文件自己预期会变，不算脏。
 const dirty = git(['status', '--porcelain'])
   .split('\n')
